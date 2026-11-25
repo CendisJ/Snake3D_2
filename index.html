@@ -35,21 +35,21 @@ button:active{transform:scale(.96)}
 (()=>{
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
 const $=id=>document.getElementById(id);
-let W=0,H=0,D=1,last=0,paused=false,score=0,coins=0,speedLevel=0,incomeLevel=0,incomeTimer=0;
+let W=0,H=0,D=1,last=0,paused=false,score=0,coins=0,speedLevel=0,incomeLevel=0;
 let head={x:0,y:0},camera={x:0,y:0},dir={x:1,y:0},wantedDir={x:1,y:0};
 let trail=[],foods=[],speed=145;
 const radius=12,spacing=13;
 const costSpeed=()=>25+speedLevel*30,costIncome=()=>25+incomeLevel*30;
 function resize(){D=Math.min(window.devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=Math.round(W*D);canvas.height=Math.round(H*D);ctx.setTransform(D,0,0,D,0,0)}
 addEventListener('resize',resize);resize();
-function ui(){$('score').textContent=score;$('coins').textContent=Math.floor(coins);$('speedUp').textContent='⚡ Speed ${speedLevel} . 💰${costSpeed()}';$('incomeUp').textContent='💵 Income ${incomeLevel} . 💰${costIncome()}'}
+function ui(){$('score').textContent=score;$('coins').textContent=Math.floor(coins);$('speedUp').textContent='⚡ Speed . 💰'+costSpeed();$('incomeUp').textContent='💵 Income . 💰'+costIncome()}
 function rand(a,b){return a+Math.random()*(b-a)}
 function makeFood(initial=false){
  const r=Math.random();let type,color,points,money,size;
- if(r<.72){type='Spatna';color='#ff4545';points=-1;money=-2;size=7}
- else if(r<.94){type='Normalni';color='#ffd447';points=1;money=2;size=8}
- else if(r<.99){type='Dobra';color='#54f078';points=3;money=8;size=9.5}
- else{type='Vzacna';color='#c77aff';points=5;money=18;size=11}
+ if(r<.72){type='Spatna';color='#ff4545';points=0;money=0;size=9}
+ else if(r<.94){type='Normalni';color='#ffd447';points=1;money=3;size=10}
+ else if(r<.99){type='Dobra';color='#54f078';points=3;money=10;size=11}
+ else{type='Vzacna';color='#c77aff';points=5;money=20;size=12}
  const rangeX=initial?W*.48:W*1.2,rangeY=initial?H*.38:H*1.2;
  foods.push({x:head.x+rand(-rangeX,rangeX),y:head.y+rand(-rangeY,rangeY),type,color,points,money,size});
 }
@@ -70,13 +70,13 @@ function update(dt){
  head.x+=dir.x*speed*dt;head.y+=dir.y*speed*dt;camera.x=head.x;camera.y=head.y;
  trail.unshift({x:head.x,y:head.y});
  const length=100+score*3;while(trail.length>length)trail.pop();
- incomeTimer+=dt;if(incomeTimer>=1){const ticks=Math.floor(incomeTimer);coins+=ticks*(1+incomeLevel);incomeTimer-=ticks;ui()}
- for(let i=foods.length-1;i>=0;i--){const f=foods[i];if(Math.hypot(head.x-f.x,head.y-f.y)<radius+f.size+3){score=Math.max(0,score+f.points);coins=Math.max(0,coins+f.money);foods.splice(i,1);makeFood();ui()}}
+ // Penize se ziskavaji pouze sebranim jidla. Income upgrade nasobi odmenu z jidla.
+ for(let i=foods.length-1;i>=0;i--){const f=foods[i];if(Math.hypot(head.x-f.x,head.y-f.y)<radius+f.size+15){score=Math.max(0,score+f.points);coins=Math.max(0,coins+Math.round(f.money*(1+incomeLevel*0.5)));foods.splice(i,1);makeFood();ui()}}
  // Snake passes through its own body; there is deliberately no self-collision check.
 }
 function grid(){const step=70,ox=((camera.x%step)+step)%step,oy=((camera.y%step)+step)%step;ctx.strokeStyle='#244735';ctx.lineWidth=1;ctx.beginPath();for(let x=-ox;x<W;x+=step){ctx.moveTo(x,0);ctx.lineTo(x,H)}for(let y=-oy;y<H;y+=step){ctx.moveTo(0,y);ctx.lineTo(W,y)}ctx.stroke()}
 function screen(p){return{x:W/2+p.x-camera.x,y:H/2+p.y-camera.y}}
-function drawFoods(){for(const f of foods){const p=screen(f);if(p.x< -20||p.x>W+20||p.y< -20||p.y>H+20)continue;ctx.save();ctx.shadowColor=f.color;ctx.shadowBlur=15;const g=ctx.createRadialGradient(p.x-f.size*.35,p.y-f.size*.4,1,p.x,p.y,f.size*1.4);g.addColorStop(0,'#fff');g.addColorStop(.3,f.color);g.addColorStop(1,f.color);ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,f.size,0,Math.PI*2);ctx.fill();ctx.restore()}}
+function drawFoods(){for(const f of foods){const p=screen(f);if(p.x< -20||p.x>W+20||p.y< -20||p.y>H+20)continue;ctx.save();ctx.shadowColor=f.color;ctx.shadowBlur=18;const g=ctx.createRadialGradient(p.x-f.size*.35,p.y-f.size*.4,1,p.x,p.y,f.size*1.4);g.addColorStop(0,'#fff');g.addColorStop(.3,f.color);g.addColorStop(1,f.color);ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,f.size+2,0,Math.PI*2);ctx.fill();ctx.fillStyle='#ffffff';ctx.font='bold 9px system-ui';ctx.textAlign='center';ctx.fillText('.',p.x,p.y+3);ctx.restore()}}
 function drawSnake(){
  // Draw the body as a continuous thick line so it stays clearly visible.
  ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();
