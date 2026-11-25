@@ -5,77 +5,98 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Snake Infinite</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#07110d;color:#fff;font-family:system-ui,Arial;touch-action:none}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#07130d;color:#fff;font-family:system-ui,Arial;touch-action:none}
 canvas{display:block;width:100vw;height:100dvh;touch-action:none}
-#hud{position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;gap:8px}
-.pill{background:#10251ddc;border:1px solid #47745b;border-radius:14px;padding:8px 12px;font-weight:700;box-shadow:0 3px 14px #0006}
-#buttons{position:fixed;right:14px;bottom:18px;display:flex;gap:8px}
-button{border:1px solid #6ba77d;background:#153b29;color:white;border-radius:13px;padding:11px 15px;font-size:15px;font-weight:700}
-#help{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#10251dcc;border:1px solid #47745b;border-radius:12px;padding:8px 12px;font-size:12px;white-space:nowrap;pointer-events:none}
-#overlay{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;text-align:center}
-#panel{background:#10251d;border:1px solid #6ba77d;border-radius:20px;padding:24px;min-width:230px}
+#hud{position:fixed;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.pill{background:#10291feF;border:1px solid #65a77a;border-radius:13px;padding:8px 11px;font-weight:800;box-shadow:0 3px 14px #0008}
+#controls{position:fixed;right:10px;bottom:12px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:100%;z-index:3}
+button{border:1px solid #79bd8b;background:#17452d;color:white;border-radius:12px;padding:9px 11px;font-size:13px;font-weight:800;box-shadow:0 3px 10px #0007;touch-action:manipulation}
+button:active{transform:scale(.96)}
+#help{position:fixed;left:10px;bottom:15px;max-width:42%;background:#10291feF;border:1px solid #47745b;border-radius:12px;padding:8px 10px;font-size:12px;pointer-events:none}
+#toast{position:fixed;top:58px;left:50%;transform:translateX(-50%);background:#10291f;border:1px solid #65a77a;border-radius:12px;padding:7px 12px;font-size:12px;display:none;pointer-events:none}
+@media(max-width:650px){#controls{left:8px;right:8px;bottom:8px;justify-content:center}button{padding:8px 9px;font-size:12px}#help{bottom:62px;max-width:75%}}
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="hud"><div class="pill">🐍 Snake Infinite</div><div class="pill">🍎 <span id="score">0</span> &nbsp; 💰 <span id="coins">0</span></div></div>
+<div id="hud">
+ <div class="pill">🐍 Snake Infinite</div>
+ <div class="pill">🍎 <span id="score">0</span> &nbsp; 💰 <span id="coins">0</span></div>
+</div>
+<div id="toast"></div>
 <div id="help">Tahni prstem nebo mysi a urcuj smer</div>
-<div id="buttons"><button id="speedUp">⚡ Speed <span id="speedLvl">0</span> . 💰<span id="speedCost">25</span></button><button id="incomeUp">💵 Income <span id="incomeLvl">0</span> . 💰<span id="incomeCost">25</span></button><button id="pause">⏸ Pauza</button><button id="restart">  Znovu</button></div>
-<div id="overlay"><div id="panel"><h2>Konec hry</h2><p>Skore: <b id="finalScore">0</b></p><button id="again">Hrat znovu</button></div></div>
+<div id="controls">
+ <button id="speedUp">⚡ Speed 0 . 💰25</button>
+ <button id="incomeUp">💵 Income 0 . 💰25</button>
+ <button id="pause">⏸ Pauza</button>
+ <button id="restart">  Znovu</button>
+</div>
 <script>
 (()=>{
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
-const scoreEl=document.getElementById('score'),overlay=document.getElementById('overlay');
-let w=0,h=0,dpr=1,last=0,paused=false,dead=false,score=0,coins=0,speedLvl=0,incomeLvl=0,coinTick=0;
-let camera={x:0,y:0},head={x:0,y:0},dir={x:1,y:0},target={x:1,y:0};
-let trail=[],foods=[],distance=0;
-let speed=145, spacing=13, snakeRadius=12;
-const speedCost=()=>25+speedLvl*30, incomeCost=()=>25+incomeLvl*30;
-function updateUpgradeUI(){document.getElementById("coins").textContent=Math.floor(coins);document.getElementById("speedLvl").textContent=speedLvl;document.getElementById("incomeLvl").textContent=incomeLvl;document.getElementById("speedCost").textContent=speedCost();document.getElementById("incomeCost").textContent=incomeCost()}
-function resize(){dpr=Math.min(devicePixelRatio||1,2);w=innerWidth;h=innerHeight;canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0)}
+const $=id=>document.getElementById(id);
+let W=0,H=0,D=1,last=0,paused=false,score=0,coins=0,speedLevel=0,incomeLevel=0,incomeTimer=0;
+let head={x:0,y:0},camera={x:0,y:0},dir={x:1,y:0},wantedDir={x:1,y:0};
+let trail=[],foods=[],speed=145;
+const radius=12,spacing=13;
+const costSpeed=()=>25+speedLevel*30,costIncome=()=>25+incomeLevel*30;
+function resize(){D=Math.min(window.devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=Math.round(W*D);canvas.height=Math.round(H*D);ctx.setTransform(D,0,0,D,0,0)}
 addEventListener('resize',resize);resize();
+function ui(){$('score').textContent=score;$('coins').textContent=Math.floor(coins);$('speedUp').textContent='⚡ Speed ${speedLevel} . 💰${costSpeed()}';$('incomeUp').textContent='💵 Income ${incomeLevel} . 💰${costIncome()}'}
 function rand(a,b){return a+Math.random()*(b-a)}
-function addFood(){
-// Most balls are bad; better ones are rarer and only slightly bigger.
-const roll=Math.random();let type,r,hue,value,coinValue;
-if(roll<0.72){type="bad";r=7;hue=0;value=-1;coinValue=-2}
-else if(roll<0.94){type="normal";r=8;hue=45;value=1;coinValue=2}
-else if(roll<0.99){type="good";r=9.5;hue=125;value=3;coinValue=8}
-else{type="rare";r=11;hue=275;value=5;coinValue=18}
-foods.push({x:head.x+rand(-w*1.25,w*1.25),y:head.y+rand(-h*1.25,h*1.25),r,hue,type,value,coinValue})}
-function reset(){head={x:0,y:0};camera={x:0,y:0};dir={x:1,y:0};target={x:1,y:0};trail=[];for(let i=0;i<100;i++)trail.push({x:-i*spacing,y:0});foods=[];for(let i=0;i<100;i++)addFood();score=0;coins=0;speedLvl=0;incomeLvl=0;coinTick=0;speed=145;distance=0;dead=false;paused=false;scoreEl.textContent='0';overlay.style.display='none';document.getElementById('pause').textContent='⏸ Pauza';updateUpgradeUI()}
-reset();
-function setTarget(x,y){const len=Math.hypot(x,y);if(len<8)return;target={x:x/len,y:y/len}}
-let pointerDown=false;
-function point(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left-w/2,y:e.clientY-r.top-h/2}}
-canvas.addEventListener('pointerdown',e=>{pointerDown=true;canvas.setPointerCapture(e.pointerId);const p=point(e);setTarget(p.x,p.y)});
-canvas.addEventListener('pointermove',e=>{if(pointerDown){const p=point(e);setTarget(p.x,p.y)}});
-canvas.addEventListener('pointerup',()=>pointerDown=false);canvas.addEventListener('pointercancel',()=>pointerDown=false);
-function lerpAngleVector(){const turn= Math.min(1,0.12);let x=dir.x+(target.x-dir.x)*turn,y=dir.y+(target.y-dir.y)*turn;const n=Math.hypot(x,y)||1;dir={x:x/n,y:y/n}}
-function update(dt){
-if(paused||dead)return;
-coinTick+=dt;if(coinTick>=1){coins+=1+incomeLvl;coinTick-=1;updateUpgradeUI()}
-lerpAngleVector();
-const move=speed*dt;head.x+=dir.x*move;head.y+=dir.y*move;distance+=move;
-trail.unshift({x:head.x,y:head.y});
-const wanted= Math.max(100,Math.floor((score+1)*3)+100);
-while(trail.length>wanted)trail.pop();
-camera.x=head.x;camera.y=head.y;
-for(let i=foods.length-1;i>=0;i--){const f=foods[i];if(Math.hypot(head.x-f.x,head.y-f.y)<snakeRadius+f.r+2){foods.splice(i,1);score=Math.max(0,score+f.value);coins=Math.max(0,coins+f.coinValue);scoreEl.textContent=score;updateUpgradeUI();addFood()}}
-// Self-collision is a penalty, not game over: restart the snake's trail and deduct a few coins.
-// Kolize s vlastnim telem nevadi: had jim jednoduse projde.
+function makeFood(initial=false){
+ const r=Math.random();let type,color,points,money,size;
+ if(r<.72){type='Spatna';color='#ff4545';points=-1;money=-2;size=7}
+ else if(r<.94){type='Normalni';color='#ffd447';points=1;money=2;size=8}
+ else if(r<.99){type='Dobra';color='#54f078';points=3;money=8;size=9.5}
+ else{type='Vzacna';color='#c77aff';points=5;money=18;size=11}
+ const rangeX=initial?W*.48:W*1.2,rangeY=initial?H*.38:H*1.2;
+ foods.push({x:head.x+rand(-rangeX,rangeX),y:head.y+rand(-rangeY,rangeY),type,color,points,money,size});
 }
-function drawGrid(){const step=70,ox=((camera.x%step)+step)%step,oy=((camera.y%step)+step)%step;ctx.strokeStyle='#183528';ctx.lineWidth=1;ctx.beginPath();for(let x=-ox;x<w;x+=step){ctx.moveTo(x,0);ctx.lineTo(x,h)}for(let y=-oy;y<h;y+=step){ctx.moveTo(0,y);ctx.lineTo(w,y)}ctx.stroke()}
-function drawFood(f){const x=w/2+(f.x-camera.x),y=h/2+(f.y-camera.y);ctx.save();ctx.shadowColor='hsl(${f.hue} 90% 60%)';ctx.shadowBlur=f.type==="rare"?22:14;const g=ctx.createRadialGradient(x-f.r*.3,y-f.r*.35,1,x,y,f.r*1.4);g.addColorStop(0,'#fff');g.addColorStop(.25,'hsl(${f.hue} 95% 70%)');g.addColorStop(1,'hsl(${f.hue} 90% 42%)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,f.r,0,Math.PI*2);ctx.fill();ctx.restore()}
-function drawSnake(){for(let i=trail.length-1;i>=0;i--){const p=trail[i],x=w/2+(p.x-camera.x),y=h/2+(p.y-camera.y);if(x<-40||x>w+40||y<-40||y>h+40)continue;const r=snakeRadius*(.88+.12*(1-i/trail.length));ctx.fillStyle=i<8?'#8cff9b':'#27c957';ctx.shadowColor='#27e765';ctx.shadowBlur=i<8?13:5;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle='#a5ffae';ctx.lineWidth=1.5;ctx.stroke()}const hx=w/2,hy=h/2;const px=-dir.y*4,py=dir.x*4;ctx.fillStyle='#092817';for(const s of [-1,1]){ctx.beginPath();ctx.arc(hx+dir.x*5+px*s,hy+dir.y*5+py*s,2.4,0,Math.PI*2);ctx.fill()}}
-function render(){ctx.clearRect(0,0,w,h);const bg=ctx.createLinearGradient(0,0,w,h);bg.addColorStop(0,'#07130e');bg.addColorStop(1,'#0b2116');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);drawGrid();foods.forEach(drawFood);drawSnake();if(paused&&!dead){ctx.fillStyle='#ffffffcc';ctx.font='bold 30px system-ui';ctx.textAlign='center';ctx.fillText('PAUZA',w/2,h/2+85)}}
-function loop(t){if(!last)last=t;const dt=Math.min((t-last)/1000,.04);last=t;update(dt);render();requestAnimationFrame(loop)}
-requestAnimationFrame(loop);
-document.getElementById('pause').onclick=()=>{if(dead)return;paused=!paused;document.getElementById('pause').textContent=paused?'▶ Pokracovat':'⏸ Pauza'};
-document.getElementById('restart').onclick=reset;document.getElementById('again').onclick=reset;
-document.getElementById('speedUp').onclick=()=>{const cost=speedCost();if(coins>=cost){coins-=cost;speedLvl++;speed+=22;updateUpgradeUI()}};
-document.getElementById('incomeUp').onclick=()=>{const cost=incomeCost();if(coins>=cost){coins-=cost;incomeLvl++;updateUpgradeUI()}};
-addEventListener('keydown',e=>{const m={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]};if(m[e.key])setTarget(...m[e.key]);if(e.key===' '){paused=!paused;document.getElementById('pause').textContent=paused?'▶ Pokracovat':'⏸ Pauza'}});
+function reset(){head={x:0,y:0};camera={x:0,y:0};dir={x:1,y:0};wantedDir={x:1,y:0};trail=[];for(let i=0;i<100;i++)trail.push({x:-i*spacing,y:0});foods=[];for(let i=0;i<100;i++)makeFood(true);score=0;coins=0;speedLevel=0;incomeLevel=0;incomeTimer=0;speed=145;paused=false;$('pause').textContent='⏸ Pauza';ui()}
+reset();
+function aim(x,y){const n=Math.hypot(x,y);if(n>5)wantedDir={x:x/n,y:y/n}}
+let dragging=false;
+function pointer(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left-W/2,y:e.clientY-r.top-H/2}}
+canvas.addEventListener('pointerdown',e=>{dragging=true;canvas.setPointerCapture(e.pointerId);const p=pointer(e);aim(p.x,p.y)});
+canvas.addEventListener('pointermove',e=>{if(dragging){const p=pointer(e);aim(p.x,p.y)}});
+canvas.addEventListener('pointerup',()=>dragging=false);canvas.addEventListener('pointercancel',()=>dragging=false);
+function update(dt){
+ if(paused)return;
+ // Smoothly turn toward the pointer direction.
+ const blend=Math.min(1,dt*7);
+ let dx=dir.x+(wantedDir.x-dir.x)*blend,dy=dir.y+(wantedDir.y-dir.y)*blend;
+ const n=Math.hypot(dx,dy)||1;dir={x:dx/n,y:dy/n};
+ head.x+=dir.x*speed*dt;head.y+=dir.y*speed*dt;camera.x=head.x;camera.y=head.y;
+ trail.unshift({x:head.x,y:head.y});
+ const length=100+score*3;while(trail.length>length)trail.pop();
+ incomeTimer+=dt;if(incomeTimer>=1){const ticks=Math.floor(incomeTimer);coins+=ticks*(1+incomeLevel);incomeTimer-=ticks;ui()}
+ for(let i=foods.length-1;i>=0;i--){const f=foods[i];if(Math.hypot(head.x-f.x,head.y-f.y)<radius+f.size+3){score=Math.max(0,score+f.points);coins=Math.max(0,coins+f.money);foods.splice(i,1);makeFood();ui()}}
+ // Snake passes through its own body; there is deliberately no self-collision check.
+}
+function grid(){const step=70,ox=((camera.x%step)+step)%step,oy=((camera.y%step)+step)%step;ctx.strokeStyle='#244735';ctx.lineWidth=1;ctx.beginPath();for(let x=-ox;x<W;x+=step){ctx.moveTo(x,0);ctx.lineTo(x,H)}for(let y=-oy;y<H;y+=step){ctx.moveTo(0,y);ctx.lineTo(W,y)}ctx.stroke()}
+function screen(p){return{x:W/2+p.x-camera.x,y:H/2+p.y-camera.y}}
+function drawFoods(){for(const f of foods){const p=screen(f);if(p.x< -20||p.x>W+20||p.y< -20||p.y>H+20)continue;ctx.save();ctx.shadowColor=f.color;ctx.shadowBlur=15;const g=ctx.createRadialGradient(p.x-f.size*.35,p.y-f.size*.4,1,p.x,p.y,f.size*1.4);g.addColorStop(0,'#fff');g.addColorStop(.3,f.color);g.addColorStop(1,f.color);ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,f.size,0,Math.PI*2);ctx.fill();ctx.restore()}}
+function drawSnake(){
+ // Draw the body as a continuous thick line so it stays clearly visible.
+ ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();
+ let started=false;
+ for(let i=trail.length-1;i>=0;i--){const p=screen(trail[i]);if(p.x< -50||p.x>W+50||p.y< -50||p.y>H+50)continue;if(!started){ctx.moveTo(p.x,p.y);started=true}else ctx.lineTo(p.x,p.y)}
+ ctx.strokeStyle='#178b3d';ctx.lineWidth=23;ctx.shadowColor='#25ed63';ctx.shadowBlur=8;ctx.stroke();
+ ctx.shadowBlur=0;ctx.strokeStyle='#62ed83';ctx.lineWidth=17;ctx.stroke();
+ const x=W/2,y=H/2;ctx.fillStyle='#9affad';ctx.beginPath();ctx.arc(x,y,13,0,Math.PI*2);ctx.fill();
+ const px=-dir.y*4,py=dir.x*4;ctx.fillStyle='#07351b';
+ for(const s of [-1,1]){ctx.beginPath();ctx.arc(x+dir.x*5+px*s,y+dir.y*5+py*s,2.7,0,Math.PI*2);ctx.fill()}
+ ctx.restore()
+}
+function render(){ctx.clearRect(0,0,W,H);const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,'#07130e');bg.addColorStop(1,'#0c2417');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);grid();drawFoods();drawSnake();if(paused){ctx.fillStyle='#ffffff';ctx.font='bold 30px system-ui';ctx.textAlign='center';ctx.fillText('PAUZA',W/2,H/2+65)}}
+function loop(t){if(!last)last=t;const dt=Math.min((t-last)/1000,.04);last=t;update(dt);render();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+$('speedUp').onclick=()=>{const c=costSpeed();if(coins>=c){coins-=c;speedLevel++;speed+=22;ui()}else toast('Jeste nemas dost penez')};
+$('incomeUp').onclick=()=>{const c=costIncome();if(coins>=c){coins-=c;incomeLevel++;ui()}else toast('Jeste nemas dost penez')};
+$('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'▶ Pokracovat':'⏸ Pauza'};
+$('restart').onclick=reset;
+function toast(t){$('toast').textContent=t;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',1200)}
+addEventListener('keydown',e=>{const m={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]};if(m[e.key])aim(...m[e.key]);if(e.key===' '){paused=!paused;$('pause').textContent=paused?'▶ Pokracovat':'⏸ Pauza'}});
 })();
 </script>
 </body></html>
