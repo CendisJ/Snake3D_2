@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Snake 3D – nekonečná mapa (test)</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#07101d;color:white;font-family:Arial,sans-serif;touch-action:none}
+header{text-align:center;padding:10px 6px 5px;font-size:24px;font-weight:900;color:#63ff9a;text-shadow:0 0 15px #00ff80}
+#stats{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;padding:5px}
+.stat{background:#14263a;border:1px solid #29435d;border-radius:11px;padding:7px 11px;font-weight:bold;font-size:14px}
+#game{display:block;width:min(96vw,600px);height:min(58vh,600px);margin:7px auto;background:#102337;border:2px solid #31516b;border-radius:16px;box-shadow:0 0 25px #00a66a44;touch-action:none}
+#controls{display:flex;justify-content:center;gap:9px;flex-wrap:wrap;padding:4px}
+button{background:linear-gradient(135deg,#20c878,#087d55);border:0;border-radius:11px;padding:10px 13px;color:white;font-weight:bold;font-size:14px;box-shadow:0 3px 0 #064d38}
+#joystick{width:112px;height:112px;border-radius:50%;background:#263c50;border:3px solid #58748b;margin:8px auto;position:relative;touch-action:none}
+#stick{position:absolute;width:46px;height:46px;left:30px;top:30px;border-radius:50%;background:linear-gradient(135deg,#73ffb0,#00a65d);box-shadow:0 0 18px #00ff91;pointer-events:none}
+#message{position:absolute;inset:40% 0 auto;text-align:center;font-size:25px;font-weight:bold;text-shadow:0 2px 8px black;pointer-events:none}
+#hint{text-align:center;color:#a9c2d5;font-size:12px;padding:0 10px 8px}
+</style>
+</head>
+<body>
+<header>🐍 SNAKE 3D · TEST</header>
+<div id="stats">
+ <div class="stat">⭐ Skóre: <span id="score">0</span></div>
+ <div class="stat">🏆 Best: <span id="best">0</span></div>
+</div>
+<div style="position:relative">
+ <canvas id="game"></canvas>
+ <div id="message"></div>
+</div>
+<div id="controls">
+ <button onclick="togglePause()">⏸ Pauza</button>
+ <button onclick="restart()">🔄 Restart</button>
+</div>
+<div id="joystick"><div id="stick"></div></div>
+<div id="hint">Nekonečná mapa · hlava hada zůstává uprostřed obrazovky</div>
+<script>
+const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
+const CELL=24;
+let snake,foods,score,best,dir,nextDir,paused=false,dead=false,lastStep=0,stepMs=170;
+let previousHead={x:0,y:0};
+best=Number(localStorage.getItem("snakeInfiniteBest")||0);
+function resize(){
+ const r=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
+ canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+new ResizeObserver(resize).observe(canvas);
+function randomFood(){
+ const a=Math.floor(Math.random()*31)-15,b=Math.floor(Math.random()*31)-15;
+ const h=snake[0];
+ return {x:h.x+a,y:h.y+b,type:["red","blue","gold"][Math.floor(Math.random()*3)]};
+}
+function fillFoods(){
+ while(foods.length<5){
+  let f=randomFood();
+  if(!snake.some(s=>s.x===f.x&&s.y===f.y)&&!foods.some(q=>q.x===f.x&&q.y===f.y))foods.push(f);
+ }
+}
+function restart(){
+ snake=[{x:0,y:0},{x:-1,y:0},{x:-2,y:0},{x:-3,y:0},{x:-4,y:0}];
+ previousHead={x:0,y:0};dir={x:1,y:0};nextDir={x:1,y:0};
+ foods=[];score=0;paused=false;dead=false;lastStep=0;
+ document.getElementById("message").textContent="";
+ fillFoods();updateUI();
+}
+function updateUI(){
+ document.getElementById("score").textContent=score;
+ document.getElementById("best").textContent=best;
+}
+function setDir(x,y){if(x===-dir.x&&y===-dir.y)return;nextDir={x,y};}
+document.addEventListener("keydown",e=>{
+ if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key))e.preventDefault();
+ if(e.key==="ArrowUp"||e.key==="w")setDir(0,-1);
+ if(e.key==="ArrowDown"||e.key==="s")setDir(0,1);
+ if(e.key==="ArrowLeft"||e.key==="a")setDir(-1,0);
+ if(e.key==="ArrowRight"||e.key==="d")setDir(1,0);
+ if(e.code==="Space")togglePause();
+});
+const joystick=document.getElementById("joystick"),stick=document.getElementById("stick");
+let joyActive=false;
+function moveJoy(e){
+ const r=joystick.getBoundingClientRect();let dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2);
+ const len=Math.hypot(dx,dy),max=33;if(len>max){dx=dx/len*max;dy=dy/len*max;}
+ stick.style.transform=`translate(${dx}px,${dy}px)`;
+ if(Math.hypot(dx,dy)>10){if(Math.abs(dx)>Math.abs(dy))setDir(Math.sign(dx),0);else setDir(0,Math.sign(dy));}
+}
+joystick.addEventListener("pointerdown",e=>{joyActive=true;joystick.setPointerCapture(e.pointerId);moveJoy(e);});
+joystick.addEventListener("pointermove",e=>{if(joyActive)moveJoy(e);});
+function endJoy(){joyActive=false;stick.style.transform="translate(0,0)";}
+joystick.addEventListener("pointerup",endJoy);joystick.addEventListener("pointercancel",endJoy);
+function togglePause(){if(dead)return;paused=!paused;document.getElementById("message").textContent=paused?"PAUZA":"";}
+function step(){
+ dir=nextDir;
+ const h={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+ const fIndex=foods.findIndex(f=>f.x===h.x&&f.y===h.y);
+ const eating=fIndex>=0,body=eating?snake:snake.slice(0,-1);
+ if(body.some(s=>s.x===h.x&&s.y===h.y)){
+  dead=true;document.getElementById("message").textContent="KONEC HRY";return;
+ }
+ previousHead={x:snake[0].x,y:snake[0].y};
+ snake.unshift(h);
+ if(eating){
+  const f=foods.splice(fIndex,1)[0];
+  score+=f.type==="gold"?5:f.type==="blue"?3:1;
+  if(score>best){best=score;localStorage.setItem("snakeInfiniteBest",best);}
+  fillFoods();updateUI();
+ }else snake.pop();
+}
+function circle(x,y,r,color){
+ const g=ctx.createRadialGradient(x-r*.35,y-r*.4,1,x,y,r);
+ g.addColorStop(0,"#fff");g.addColorStop(.24,color);g.addColorStop(1,"#07101d");
+ ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+}
+function draw(now){
+ const w=canvas.clientWidth,h=canvas.clientHeight;
+ ctx.clearRect(0,0,w,h);ctx.fillStyle="#102337";ctx.fillRect(0,0,w,h);
+ const progress=paused||dead?1:Math.min(1,(now-lastStep)/stepMs);
+ const headX=previousHead.x+(snake[0].x-previousHead.x)*progress;
+ const headY=previousHead.y+(snake[0].y-previousHead.y)*progress;
+ const cx=w/2,cy=h/2;
+ const cameraX=headX*CELL,cameraY=headY*CELL;
+ const offsetX=((cameraX%CELL)+CELL)%CELL,offsetY=((cameraY%CELL)+CELL)%CELL;
+ ctx.strokeStyle="#ffffff0c";ctx.lineWidth=1;
+ for(let x=cx-offsetX-CELL;x<w+CELL;x+=CELL){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+ for(let y=cy-offsetY-CELL;y<h+CELL;y+=CELL){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+ const colors={red:"#ff405e",blue:"#36bfff",gold:"#ffd447"};
+ for(const f of foods)circle(cx+(f.x*CELL-cameraX),cy+(f.y*CELL-cameraY),10,colors[f.type]);
+ for(let i=snake.length-1;i>=0;i--){
+  let sx=snake[i].x,sy=snake[i].y;
+  if(i===0){sx=headX;sy=headY;}
+  const x=cx+(sx*CELL-cameraX),y=cy+(sy*CELL-cameraY);
+  circle(x,y,i===0?CELL*.46:CELL*.42,i===0?"#68ff9b":"#19d978");
+  if(i===0){
+   ctx.fillStyle="#06351e";
+   const ex=dir.x===1?-3:dir.x===-1?3:0,ey=dir.y===1?-3:dir.y===-1?3:0;
+   ctx.beginPath();ctx.arc(x-4+ex,y-3+ey,2,0,Math.PI*2);ctx.fill();
+   ctx.beginPath();ctx.arc(x+4+ex,y-3+ey,2,0,Math.PI*2);ctx.fill();
+  }
+ }
+}
+function loop(now){
+ if(!lastStep)lastStep=now;
+ if(!paused&&!dead&&now-lastStep>=stepMs){step();lastStep=now;}
+ draw(now);requestAnimationFrame(loop);
+}
+restart();resize();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
