@@ -39,6 +39,7 @@ h2{font-size:28px;margin:6px 0 18px;color:#c7ffd0}
 .skinName{flex:1;font-weight:800}
 .skin button{padding:8px 12px;font-size:12px}
 #toast{position:absolute;top:75px;left:50%;transform:translateX(-50%);background:#071b13ee;border:1px solid #7bb98b;border-radius:12px;padding:9px 14px;font-weight:800;display:none;pointer-events:none;white-space:nowrap}
+#minimap{position:absolute;right:14px;bottom:14px;width:154px;height:154px;border:2px solid #78b88a;border-radius:50%;background:#06130ddd;box-shadow:0 4px 18px #0009;pointer-events:none}
 #paused{position:absolute;inset:0;background:#06130dcc;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px}
 @media(max-height:550px){.panel{padding:17px}.menuButtons{gap:8px}.menuButtons button{padding:10px}}
 </style>
@@ -46,6 +47,7 @@ h2{font-size:28px;margin:6px 0 18px;color:#c7ffd0}
 <body>
 <div id="game">
   <canvas id="canvas"></canvas>
+  <canvas id="minimap" width="154" height="154"></canvas>
   <div id="hud">
     <div class="pill">🍎 JABLÍČKA: <span id="coins">0</span>　✨ XP: <span id="xp">0</span></div>
     <div id="hudRight">
@@ -132,6 +134,9 @@ let foods = [], particles = [], audioCtx = null, musicOn = save.musicOn !== fals
 let bots = [];
 const BOT_COLORS = ['#ff9b48','#42c9ff','#bb83ff','#ff5573','#e6ed50','#5ce0c0'];
 const BASE_SPEED = 105, TAU = Math.PI * 2;
+const GRID_SIZE = 48;
+const MAP_RADIUS = 500 * GRID_SIZE; // 500 čtverečků od středu mapy
+const minimap = $('minimap'), mctx = minimap.getContext('2d');
 const START_SNAKE_LENGTH = 260;
 const snake = {length:START_SNAKE_LENGTH, points:[]};
 let width=0,height=0,dpr=1, pointerX=0,pointerY=0;
@@ -168,18 +173,23 @@ function resetGame(){
   snake.points=[];for(let i=0;i<60;i++)snake.points.push({x:0,y:i*4.2});
   foods=[];particles=[];fillFoods();spawnBots();updateMoney();
 }
+const BOT_NAMES=['Munch','Zippy','Noodle','Pixel','Bubbles','Turbo','Wiggles','Comet','Jelly','Dash','Milo','Pogo','Twister','Blinky','Rocket','Doodle','Waffle','Zoom','Pebble','Sushi'];
+function createBot(index,x,y){
+  const a=Math.random()*TAU;
+  const bot={name:BOT_NAMES[index%BOT_NAMES.length],x,y,angle:a,targetAngle:a,
+    length:190+Math.random()*130,points:[],color:BOT_COLORS[index%BOT_COLORS.length],
+    think:0,targetFood:null,targetBot:null,mode:'wander',roamAngle:a,alive:true};
+  for(let j=0;j<Math.ceil(bot.length/3);j++)
+    bot.points.push({x:x-Math.cos(bot.angle)*j*3,y:y-Math.sin(bot.angle)*j*3});
+  bots.push(bot);
+  return bot;
+}
 function spawnBots(){
-  const names=['Munch','Zippy','Noodle','Pixel','Bubbles','Turbo'];
-  for(let i=0;i<5;i++){
-    const a=(Math.PI*2*i/5)+Math.random()*.35;
-    const dist=420+Math.random()*260;
-    const x=worldX+Math.cos(a)*dist,y=worldY+Math.sin(a)*dist;
-    const bot={name:names[i],x,y,angle:a+Math.PI,targetAngle:a+Math.PI,
-      length:190+Math.random()*130,points:[],color:BOT_COLORS[i%BOT_COLORS.length],
-      think:0,targetFood:null,alive:true};
-    for(let j=0;j<Math.ceil(bot.length/3);j++)
-      bot.points.push({x:x-Math.cos(bot.angle)*j*3,y:y-Math.sin(bot.angle)*j*3});
-    bots.push(bot);
+  bots=[];
+  for(let i=0;i<20;i++){
+    const a=Math.random()*TAU;
+    const dist=MAP_RADIUS*(.25+Math.random()*.65);
+    createBot(i,Math.cos(a)*dist,Math.sin(a)*dist);
   }
 }
 function dropBotFood(bot){
@@ -195,7 +205,15 @@ function dropBotFood(bot){
 function killBot(bot){
   if(!bot.alive)return;
   bot.alive=false;dropBotFood(bot);
-  bots=bots.filter(b=>b.alive);
+  const botIndex=bots.indexOf(bot);
+  bots=bots.filter(b=>b!==bot);
+  // Po dvou sekundách se had vrátí na náhodné místo uvnitř mapy.
+  setTimeout(()=>{
+    if(!running || bots.length>=20)return;
+    const a=Math.random()*TAU;
+    const dist=MAP_RADIUS*(.25+Math.random()*.65);
+    createBot(Math.max(0,botIndex),Math.cos(a)*dist,Math.sin(a)*dist);
+  },2000);
 }
 function gameOver(){
   if(!running)return;
@@ -221,28 +239,62 @@ function updateBots(dt){
   for(const bot of [...bots]){
     if(!bot.alive)continue;
 
-    // Bot si drží vybranou kuličku, aby nepřeskakoval mezi cíli.
+    // Boti mají různé cíle: sbírají kuličky, loví menší hady,
+    // utíkají před většími nebo prozkoumávají mapu.
     bot.think-=dt;
-    if(!bot.targetFood || !foods.includes(bot.targetFood) || bot.think<=0){
-      bot.think=.45+Math.random()*.25;
-      let nearest=null,best=760*760;
-      for(const f of foods){
-        const dx=f.x-bot.x,dy=f.y-bot.y,d=dx*dx+dy*dy;
-        if(d<best){best=d;nearest=f;}
+    if(bot.think<=0){
+      bot.think=1.2+Math.random()*1.8;
+      bot.targetFood=null;
+      bot.targetBot=null;
+      bot.mode='wander';
+
+      let prey=null,preyDist=560*560;
+      for(const other of bots){
+        if(other===bot||!other.alive||other.length>=bot.length*.88)continue;
+        const dx=other.x-bot.x,dy=other.y-bot.y,d=dx*dx+dy*dy;
+        if(d<preyDist){preyDist=d;prey=other;}
       }
-      bot.targetFood=nearest;
+
+      // Silnější boti občas zkusí pronásledovat hráče nebo menšího bota.
+      if(bot.length>snake.length*1.12 && Math.random()<.38){
+        bot.mode='huntPlayer';
+      }else if(prey && Math.random()<.58){
+        bot.mode='huntBot';
+        bot.targetBot=prey;
+      }else if(Math.random()<.62){
+        bot.mode='food';
+        let nearest=null,best=760*760;
+        for(const f of foods){
+          const dx=f.x-bot.x,dy=f.y-bot.y,d=dx*dx+dy*dy;
+          if(d<best){best=d;nearest=f;}
+        }
+        bot.targetFood=nearest;
+      }else{
+        bot.roamAngle=bot.angle+(Math.random()-.5)*2.8;
+      }
     }
 
     let speed=82+Math.min(30,bot.length/18);
-    if(bot.targetFood && foods.includes(bot.targetFood)){
+    const fromCenter=Math.hypot(bot.x,bot.y);
+    if(fromCenter>MAP_RADIUS-180){
+      bot.targetAngle=Math.atan2(-bot.y,-bot.x);
+      bot.targetFood=null;
+      bot.targetBot=null;
+      bot.mode='edge';
+    }else if(bot.mode==='huntPlayer'){
+      const dx=worldX-bot.x,dy=worldY-bot.y;
+      bot.targetAngle=Math.atan2(dy,dx);
+    }else if(bot.mode==='huntBot' && bot.targetBot && bot.targetBot.alive && bots.includes(bot.targetBot)){
+      const dx=bot.targetBot.x-bot.x,dy=bot.targetBot.y-bot.y;
+      bot.targetAngle=Math.atan2(dy,dx);
+    }else if(bot.mode==='food' && bot.targetFood && foods.includes(bot.targetFood)){
       const dx=bot.targetFood.x-bot.x,dy=bot.targetFood.y-bot.y;
       const distance=Math.hypot(dx,dy);
       bot.targetAngle=Math.atan2(dy,dx);
-
-      // V těsné blízkosti zpomalí, aby kuličku nepředjel a nezačal kolem ní kroužit.
-      if(distance<115) speed*=Math.max(.48,distance/115);
+      // Zpomalí těsně před kuličkou, aby ji nepředjel.
+      if(distance<115)speed*=Math.max(.48,distance/115);
     }else{
-      bot.targetAngle+=((Math.random()-.5)*.8)*dt;
+      bot.targetAngle=bot.roamAngle ?? bot.angle;
     }
 
     // O něco svižnější zatáčení pomáhá hadovi lépe sledovat cíl.
@@ -309,6 +361,8 @@ function move(dt){
   const speed=BASE_SPEED+speedLevel*13;
   worldX+=Math.cos(angle)*speed*dt;
   worldY+=Math.sin(angle)*speed*dt;
+  // Když hráč opustí kruhovou mapu, hra končí.
+  if(Math.hypot(worldX,worldY)>=MAP_RADIUS){gameOver();return;}
   snake.points.unshift({x:worldX,y:worldY});
   const maxPoints=Math.ceil(snake.length/2.5);
   while(snake.points.length>maxPoints)snake.points.pop();
@@ -347,12 +401,18 @@ function draw(){
   const bg=ctx.createRadialGradient(width/2,height/2,20,width/2,height/2,Math.max(width,height)*.8);
   bg.addColorStop(0,'#102b1d');bg.addColorStop(1,'#06110c');
   ctx.fillStyle=bg;ctx.fillRect(0,0,width,height);
-  const grid=48, ox=((worldX%grid)+grid)%grid, oy=((worldY%grid)+grid)%grid;
+  const grid=GRID_SIZE, ox=((worldX%grid)+grid)%grid, oy=((worldY%grid)+grid)%grid;
   ctx.strokeStyle='#28503a55';ctx.lineWidth=1;ctx.beginPath();
   for(let x=-ox;x<width;x+=grid){ctx.moveTo(x,0);ctx.lineTo(x,height);}
   for(let y=-oy;y<height;y+=grid){ctx.moveTo(0,y);ctx.lineTo(width,y);}
   ctx.stroke();
+  // Kružnicové ohraničení celé mapy.
   const cx=width/2,cy=height/2;
+  const edgeX=cx-worldX, edgeY=cy-worldY;
+  ctx.save();
+  ctx.strokeStyle='#ffcf63';ctx.lineWidth=7;ctx.shadowColor='#ffcf63';ctx.shadowBlur=18;
+  ctx.beginPath();ctx.arc(edgeX,edgeY,MAP_RADIUS,0,TAU);ctx.stroke();
+  ctx.restore();
   for(const f of foods){
     const x=cx+(f.x-worldX),y=cy+(f.y-worldY);
     if(x<-20||y<-20||x>width+20||y>height+20)continue;
@@ -397,6 +457,40 @@ function draw(){
   ctx.beginPath();ctx.ellipse(0,0,14*growthScale,12*growthScale,0,0,TAU);ctx.fill();ctx.shadowBlur=0;
   ctx.fillStyle='#102016';ctx.beginPath();ctx.arc(5*growthScale,-5*growthScale,2.4*growthScale,0,TAU);ctx.arc(5*growthScale,5*growthScale,2.4*growthScale,0,TAU);ctx.fill();
   ctx.restore();
+  drawMinimap();
+}
+function drawMinimap(){
+  const w=minimap.width,h=minimap.height,cx=w/2,cy=h/2;
+  const r=MAP_RADIUS;
+  mctx.clearRect(0,0,w,h);
+  mctx.fillStyle='#06130d';mctx.beginPath();mctx.arc(cx,cy, cx-2,0,TAU);mctx.fill();
+  mctx.save();
+  mctx.beginPath();mctx.arc(cx,cy,cx-3,0,TAU);mctx.clip();
+  // Mřížka mapy v malém měřítku.
+  mctx.strokeStyle='#28503a88';mctx.lineWidth=1;
+  for(let i=-4;i<=4;i++){
+    const p=i*(cx-3)/4;
+    mctx.beginPath();mctx.moveTo(cx+p,3);mctx.lineTo(cx+p,h-3);mctx.stroke();
+    mctx.beginPath();mctx.moveTo(3,cy+p);mctx.lineTo(w-3,cy+p);mctx.stroke();
+  }
+  // Hráč je vždy uprostřed minimapy.
+  for(const bot of bots){
+    const bx=cx+(bot.x/r)*(cx-5);
+    const by=cy+(bot.y/r)*(cy-5);
+    if(Math.hypot(bx-cx,by-cy)<=cx-5){
+      mctx.fillStyle=bot.color;
+      mctx.beginPath();mctx.arc(bx,by,2.1,0,TAU);mctx.fill();
+      mctx.strokeStyle='#ffffffaa';mctx.lineWidth=1;mctx.stroke();
+    }
+  }
+  mctx.fillStyle='#baffc2';mctx.beginPath();mctx.arc(cx,cy,4.5,0,TAU);mctx.fill();
+  mctx.strokeStyle='#ffffff';mctx.lineWidth=1.5;mctx.stroke();
+  mctx.restore();
+  // Okraj mapy a popisek.
+  mctx.strokeStyle='#ffcf63';mctx.lineWidth=2.5;
+  mctx.beginPath();mctx.arc(cx,cy,cx-2,0,TAU);mctx.stroke();
+  mctx.fillStyle='#eaffed';mctx.font='bold 9px system-ui';mctx.textAlign='center';
+  mctx.fillText('MAPA',cx,h-8);
 }
 function loop(now){
   if(!running||paused)return;
