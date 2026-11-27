@@ -127,7 +127,8 @@ const skins = [
 let save = loadSave();
 let coins = Number.isFinite(Number(save.coins)) ? Number(save.coins) : 0, selectedSkin = save.selectedSkin || 0;
 let unlocked = new Set(save.unlocked || [0]);
-let speedLevel = save.speedLevel || 0, incomeLevel = save.incomeLevel || 0, agilityLevel = save.agilityLevel || 0;
+const MAX_UPGRADE_LEVEL = 10;
+let speedLevel = Math.min(MAX_UPGRADE_LEVEL, Math.max(0, Number(save.speedLevel)||0)), incomeLevel = Math.min(MAX_UPGRADE_LEVEL, Math.max(0, Number(save.incomeLevel)||0)), agilityLevel = Math.min(MAX_UPGRADE_LEVEL, Math.max(0, Number(save.agilityLevel)||0));
 let xp = 0, running = false, paused = false, lastTime = 0, elapsed = 0;
 let worldX = 0, worldY = 0, angle = 0, targetAngle = 0;
 let foods = [], particles = [], audioCtx = null, musicOn = save.musicOn !== false, musicTimer = null;
@@ -156,10 +157,10 @@ function updateMoney(){
   $('coins').textContent=coins;$('menuCoins').textContent=coins;$('skinCoins').textContent=coins;
   $('xp').textContent=xp;
   const sc=25+speedLevel*30, ic=25+incomeLevel*30, ac=25+agilityLevel*30;
-  $('speedBtn').textContent=`⚡ Speed Lv.${speedLevel} · 🍎${sc}`;
-  $('incomeBtn').textContent=`💰 Income Lv.${incomeLevel} · 🍎${ic}`;
-  $('agilityBtn').textContent=`🌀 Agility Lv.${agilityLevel} · 🍎${ac}`;
-  $('speedBtn').disabled=coins<sc;$('incomeBtn').disabled=coins<ic;$('agilityBtn').disabled=coins<ac;
+  $('speedBtn').textContent=speedLevel>=MAX_UPGRADE_LEVEL?`⚡ Speed Lv.${speedLevel}/10 · MAX`:`⚡ Speed Lv.${speedLevel}/10 · 🍎${sc}`;
+  $('incomeBtn').textContent=incomeLevel>=MAX_UPGRADE_LEVEL?`💰 Income Lv.${incomeLevel}/10 · MAX`:`💰 Income Lv.${incomeLevel}/10 · 🍎${ic}`;
+  $('agilityBtn').textContent=agilityLevel>=MAX_UPGRADE_LEVEL?`🌀 Agility Lv.${agilityLevel}/10 · MAX`:`🌀 Agility Lv.${agilityLevel}/10 · 🍎${ac}`;
+  $('speedBtn').disabled=speedLevel>=MAX_UPGRADE_LEVEL||coins<sc;$('incomeBtn').disabled=incomeLevel>=MAX_UPGRADE_LEVEL||coins<ic;$('agilityBtn').disabled=agilityLevel>=MAX_UPGRADE_LEVEL||coins<ac;
 }
 function randFood(){
   const a=Math.random(), type=a<.45?'bad':a<.85?'normal':a<.97?'good':'rare';
@@ -461,36 +462,46 @@ function draw(){
 }
 function drawMinimap(){
   const w=minimap.width,h=minimap.height,cx=w/2,cy=h/2;
-  const r=MAP_RADIUS;
+  const radius=cx-7;
+  // Radar je vystředěný na hráči, takže se boti na minimapě viditelně pohybují.
+  const viewRange=220*GRID_SIZE;
+  const scale=radius/viewRange;
   mctx.clearRect(0,0,w,h);
-  mctx.fillStyle='#06130d';mctx.beginPath();mctx.arc(cx,cy, cx-2,0,TAU);mctx.fill();
+  mctx.fillStyle='#06130d';
+  mctx.beginPath();mctx.arc(cx,cy,radius+4,0,TAU);mctx.fill();
   mctx.save();
-  mctx.beginPath();mctx.arc(cx,cy,cx-3,0,TAU);mctx.clip();
-  // Mřížka mapy v malém měřítku.
-  mctx.strokeStyle='#28503a88';mctx.lineWidth=1;
-  for(let i=-4;i<=4;i++){
-    const p=i*(cx-3)/4;
-    mctx.beginPath();mctx.moveTo(cx+p,3);mctx.lineTo(cx+p,h-3);mctx.stroke();
-    mctx.beginPath();mctx.moveTo(3,cy+p);mctx.lineTo(w-3,cy+p);mctx.stroke();
+  mctx.beginPath();mctx.arc(cx,cy,radius,0,TAU);mctx.clip();
+  // Jemná orientační mřížka bez označení středu mapy.
+  mctx.strokeStyle='#28503a55';mctx.lineWidth=1;
+  for(let i=-3;i<=3;i++){
+    if(i===0)continue;
+    const p=i*radius/3;
+    mctx.beginPath();mctx.moveTo(cx+p,cy-radius);mctx.lineTo(cx+p,cy+radius);mctx.stroke();
+    mctx.beginPath();mctx.moveTo(cx-radius,cy+p);mctx.lineTo(cx+radius,cy+p);mctx.stroke();
   }
-  // Hráč je vždy uprostřed minimapy.
+  // Okraj skutečné mapy se ukáže, když je v aktuálním výřezu.
+  const worldCenterX=cx-worldX*scale, worldCenterY=cy-worldY*scale;
+  const worldRadius=MAP_RADIUS*scale;
+  mctx.strokeStyle='#ffcf6388';mctx.lineWidth=1.5;
+  mctx.beginPath();mctx.arc(worldCenterX,worldCenterY,worldRadius,0,TAU);mctx.stroke();
+  // Pozice bot se počítá vůči hráči a používá aktuální souřadnice jejich hlav.
   for(const bot of bots){
-    const bx=cx+(bot.x/r)*(cx-5);
-    const by=cy+(bot.y/r)*(cy-5);
-    if(Math.hypot(bx-cx,by-cy)<=cx-5){
-      mctx.fillStyle=bot.color;
-      mctx.beginPath();mctx.arc(bx,by,2.1,0,TAU);mctx.fill();
-      mctx.strokeStyle='#ffffffaa';mctx.lineWidth=1;mctx.stroke();
-    }
+    if(!bot.alive)continue;
+    const bx=cx+(bot.x-worldX)*scale;
+    const by=cy+(bot.y-worldY)*scale;
+    if(Math.hypot(bx-cx,by-cy)>radius-3)continue;
+    mctx.fillStyle=bot.color;
+    mctx.beginPath();mctx.arc(bx,by,2.7,0,TAU);mctx.fill();
+    mctx.strokeStyle='#ffffffcc';mctx.lineWidth=.8;mctx.stroke();
   }
-  mctx.fillStyle='#baffc2';mctx.beginPath();mctx.arc(cx,cy,4.5,0,TAU);mctx.fill();
-  mctx.strokeStyle='#ffffff';mctx.lineWidth=1.5;mctx.stroke();
+  // Hráč je vždy uprostřed radaru; nejde o označení středu celé mapy.
+  mctx.fillStyle='#baffc2';mctx.beginPath();mctx.arc(cx,cy,4.2,0,TAU);mctx.fill();
+  mctx.strokeStyle='#ffffff';mctx.lineWidth=1.2;mctx.stroke();
   mctx.restore();
-  // Okraj mapy a popisek.
-  mctx.strokeStyle='#ffcf63';mctx.lineWidth=2.5;
-  mctx.beginPath();mctx.arc(cx,cy,cx-2,0,TAU);mctx.stroke();
+  mctx.strokeStyle='#78b88a';mctx.lineWidth=2;
+  mctx.beginPath();mctx.arc(cx,cy,radius+1,0,TAU);mctx.stroke();
   mctx.fillStyle='#eaffed';mctx.font='bold 9px system-ui';mctx.textAlign='center';
-  mctx.fillText('MAPA',cx,h-8);
+  mctx.fillText('RADAR',cx,h-8);
 }
 function loop(now){
   if(!running||paused)return;
@@ -531,14 +542,17 @@ function closeUpgrades(){
 $('upgradeOpenBtn').addEventListener('click',openUpgrades);
 $('upgradeCloseBtn').addEventListener('click',closeUpgrades);
 $('speedBtn').addEventListener('click',()=>{
+  if(speedLevel>=MAX_UPGRADE_LEVEL)return;
   const cost=25+speedLevel*30;if(coins<cost)return;
   coins-=cost;speedLevel++;updateMoney();persist();toast('Rychlost vylepšena!');
 });
 $('incomeBtn').addEventListener('click',()=>{
+  if(incomeLevel>=MAX_UPGRADE_LEVEL)return;
   const cost=25+incomeLevel*30;if(coins<cost)return;
   coins-=cost;incomeLevel++;updateMoney();persist();toast('Všechny kuličky dávají více jablíček!');
 });
 $('agilityBtn').addEventListener('click',()=>{
+  if(agilityLevel>=MAX_UPGRADE_LEVEL)return;
   const cost=25+agilityLevel*30;if(coins<cost)return;
   coins-=cost;agilityLevel++;updateMoney();persist();toast('Obratnost vylepšena!');
 });
