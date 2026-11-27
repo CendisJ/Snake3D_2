@@ -375,7 +375,7 @@ function move(dt){
   for(let i=foods.length-1;i>=0;i--){
     const f=foods[i];
     const dx=f.x-head.x,dy=f.y-head.y;
-    const pickupRadius=rangeLevel>0?rangeLevel*20*GRID_SIZE+f.r: f.r+14;
+    const pickupRadius=rangeLevel>0?rangeLevel*GRID_SIZE+f.r: f.r+14;
     if(dx*dx+dy*dy<pickupRadius*pickupRadius){
       xp=Math.max(0,xp+f.xp);
       snake.length+=12;
@@ -459,7 +459,7 @@ function draw(){
     snake.points.forEach((p,i)=>{if(i%3)return;const x=cx+p.x-worldX,y=cy+p.y-worldY;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();
   }
   if(rangeLevel>0){
-    const magnetRadius=rangeLevel*20*GRID_SIZE;
+    const magnetRadius=rangeLevel*GRID_SIZE;
     ctx.save();ctx.strokeStyle='#8de8ff88';ctx.fillStyle='#63cfff12';ctx.lineWidth=2;ctx.setLineDash([8,7]);
     ctx.beginPath();ctx.arc(cx,cy,magnetRadius,0,TAU);ctx.fill();ctx.stroke();ctx.restore();
   }
@@ -570,7 +570,7 @@ $('rangeBtn').addEventListener('click',()=>{
   if(rangeLevel>=MAX_RANGE_LEVEL)return;
   const cost=1000*Math.pow(4,rangeLevel);if(coins<cost)return;
   coins-=cost;rangeLevel++;updateMoney();persist();
-  toast(`Range zvýšen na ${rangeLevel*20} bloků!`);
+  toast(`Range zvýšen na ${rangeLevel} bloků!`);
 });
 function renderSkins(){
   $('skinCoins').textContent=coins;
