@@ -66,6 +66,7 @@ h2{font-size:28px;margin:6px 0 18px;color:#c7ffd0}
       <button id="speedBtn">⚡ Speed · 🍎25</button>
       <button id="incomeBtn">💰 Income · 🍎25</button>
       <button id="agilityBtn">🌀 Agility · 🍎25</button>
+      <button id="rangeBtn">🧲 Range · 🍎1000</button>
       <button id="upgradeCloseBtn" class="back">ZAVŘÍT</button>
     </div>
   </div>
@@ -128,7 +129,10 @@ let save = loadSave();
 let coins = Number.isFinite(Number(save.coins)) ? Number(save.coins) : 0, selectedSkin = save.selectedSkin || 0;
 let unlocked = new Set(save.unlocked || [0]);
 const MAX_UPGRADE_LEVEL = 10;
-let speedLevel = Math.min(MAX_UPGRADE_LEVEL, Math.max(0, Number(save.speedLevel)||0)), incomeLevel = Math.min(MAX_UPGRADE_LEVEL, Math.max(0, Number(save.incomeLevel)||0)), agilityLevel = Math.min(MAX_UPGRADE_LEVEL, Math.max(0, Number(save.agilityLevel)||0));
+const MAX_SPEED_LEVEL = 11;
+const MAX_RANGE_LEVEL = 5;
+let speedLevel = Math.min(MAX_SPEED_LEVEL, Math.max(0, Number(save.speedLevel)||0)), incomeLevel = Math.min(MAX_UPGRADE_LEVEL, Math.max(0, Number(save.incomeLevel)||0)), agilityLevel = Math.min(MAX_UPGRADE_LEVEL, Math.max(0, Number(save.agilityLevel)||0));
+let rangeLevel = Math.min(MAX_RANGE_LEVEL, Math.max(0, Number(save.rangeLevel)||0));
 let xp = 0, running = false, paused = false, lastTime = 0, elapsed = 0;
 let worldX = 0, worldY = 0, angle = 0, targetAngle = 0;
 let foods = [], particles = [], audioCtx = null, musicOn = save.musicOn !== false, musicTimer = null;
@@ -143,7 +147,7 @@ const snake = {length:START_SNAKE_LENGTH, points:[]};
 let width=0,height=0,dpr=1, pointerX=0,pointerY=0;
 function loadSave(){try{return JSON.parse(localStorage.getItem(STORE))||{};}catch(e){return {};}}
 function persist(){
-  save={coins,selectedSkin,unlocked:[...unlocked],speedLevel,incomeLevel,agilityLevel,musicOn};
+  save={coins,selectedSkin,unlocked:[...unlocked],speedLevel,incomeLevel,agilityLevel,rangeLevel,musicOn};
   try{localStorage.setItem(STORE,JSON.stringify(save));}catch(e){}
 }
 function resize(){
@@ -157,10 +161,12 @@ function updateMoney(){
   $('coins').textContent=coins;$('menuCoins').textContent=coins;$('skinCoins').textContent=coins;
   $('xp').textContent=xp;
   const sc=25+speedLevel*30, ic=25+incomeLevel*30, ac=25+agilityLevel*30;
-  $('speedBtn').textContent=speedLevel>=MAX_UPGRADE_LEVEL?`⚡ Speed Lv.${speedLevel}/10 · MAX`:`⚡ Speed Lv.${speedLevel}/10 · 🍎${sc}`;
+  const rc=1000*Math.pow(4,rangeLevel);
+  $('speedBtn').textContent=speedLevel>=MAX_SPEED_LEVEL?`⚡ Speed Lv.${speedLevel}/11 · MAX`:`⚡ Speed Lv.${speedLevel}/11 · 🍎${sc}`;
   $('incomeBtn').textContent=incomeLevel>=MAX_UPGRADE_LEVEL?`💰 Income Lv.${incomeLevel}/10 · MAX`:`💰 Income Lv.${incomeLevel}/10 · 🍎${ic}`;
   $('agilityBtn').textContent=agilityLevel>=MAX_UPGRADE_LEVEL?`🌀 Agility Lv.${agilityLevel}/10 · MAX`:`🌀 Agility Lv.${agilityLevel}/10 · 🍎${ac}`;
-  $('speedBtn').disabled=speedLevel>=MAX_UPGRADE_LEVEL||coins<sc;$('incomeBtn').disabled=incomeLevel>=MAX_UPGRADE_LEVEL||coins<ic;$('agilityBtn').disabled=agilityLevel>=MAX_UPGRADE_LEVEL||coins<ac;
+  $('rangeBtn').textContent=rangeLevel>=MAX_RANGE_LEVEL?`🧲 Range Lv.${rangeLevel}/5 · MAX`:`🧲 Range Lv.${rangeLevel}/5 · 🍎${rc}`;
+  $('speedBtn').disabled=speedLevel>=MAX_SPEED_LEVEL||coins<sc;$('incomeBtn').disabled=incomeLevel>=MAX_UPGRADE_LEVEL||coins<ic;$('agilityBtn').disabled=agilityLevel>=MAX_UPGRADE_LEVEL||coins<ac;$('rangeBtn').disabled=rangeLevel>=MAX_RANGE_LEVEL||coins<rc;
 }
 function randFood(){
   const a=Math.random(), type=a<.45?'bad':a<.85?'normal':a<.97?'good':'rare';
@@ -175,10 +181,10 @@ function resetGame(){
   foods=[];particles=[];fillFoods();spawnBots();updateMoney();
 }
 const BOT_NAMES=['Munch','Zippy','Noodle','Pixel','Bubbles','Turbo','Wiggles','Comet','Jelly','Dash','Milo','Pogo','Twister','Blinky','Rocket','Doodle','Waffle','Zoom','Pebble','Sushi'];
-function createBot(index,x,y){
+function createBot(index,x,y,keepLength=null){
   const a=Math.random()*TAU;
   const bot={name:BOT_NAMES[index%BOT_NAMES.length],x,y,angle:a,targetAngle:a,
-    length:190+Math.random()*130,points:[],color:BOT_COLORS[index%BOT_COLORS.length],
+    length:keepLength??(190+Math.random()*130),points:[],color:BOT_COLORS[index%BOT_COLORS.length],
     think:0,targetFood:null,targetBot:null,mode:'wander',roamAngle:a,alive:true};
   for(let j=0;j<Math.ceil(bot.length/3);j++)
     bot.points.push({x:x-Math.cos(bot.angle)*j*3,y:y-Math.sin(bot.angle)*j*3});
@@ -213,7 +219,7 @@ function killBot(bot){
     if(!running || bots.length>=20)return;
     const a=Math.random()*TAU;
     const dist=MAP_RADIUS*(.25+Math.random()*.65);
-    createBot(Math.max(0,botIndex),Math.cos(a)*dist,Math.sin(a)*dist);
+    createBot(Math.max(0,botIndex),Math.cos(a)*dist,Math.sin(a)*dist,bot.length);
   },2000);
 }
 function gameOver(){
@@ -275,7 +281,7 @@ function updateBots(dt){
       }
     }
 
-    let speed=82+Math.min(30,bot.length/18);
+    const speed=95;
     const fromCenter=Math.hypot(bot.x,bot.y);
     if(fromCenter>MAP_RADIUS-180){
       bot.targetAngle=Math.atan2(-bot.y,-bot.x);
@@ -292,8 +298,6 @@ function updateBots(dt){
       const dx=bot.targetFood.x-bot.x,dy=bot.targetFood.y-bot.y;
       const distance=Math.hypot(dx,dy);
       bot.targetAngle=Math.atan2(dy,dx);
-      // Zpomalí těsně před kuličkou, aby ji nepředjel.
-      if(distance<115)speed*=Math.max(.48,distance/115);
     }else{
       bot.targetAngle=bot.roamAngle ?? bot.angle;
     }
@@ -371,7 +375,8 @@ function move(dt){
   for(let i=foods.length-1;i>=0;i--){
     const f=foods[i];
     const dx=f.x-head.x,dy=f.y-head.y;
-    if(dx*dx+dy*dy<(f.r+14)*(f.r+14)){
+    const pickupRadius=rangeLevel>0?rangeLevel*20*GRID_SIZE+f.r: f.r+14;
+    if(dx*dx+dy*dy<pickupRadius*pickupRadius){
       xp=Math.max(0,xp+f.xp);
       snake.length+=12;
       const reward=Math.round(f.coins*(1+1.5*incomeLevel));
@@ -452,6 +457,11 @@ function draw(){
     // jemné segmentové odlesky
     ctx.strokeStyle='#ffffff35';ctx.lineWidth=3*growthScale;ctx.beginPath();
     snake.points.forEach((p,i)=>{if(i%3)return;const x=cx+p.x-worldX,y=cy+p.y-worldY;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();
+  }
+  if(rangeLevel>0){
+    const magnetRadius=rangeLevel*20*GRID_SIZE;
+    ctx.save();ctx.strokeStyle='#8de8ff88';ctx.fillStyle='#63cfff12';ctx.lineWidth=2;ctx.setLineDash([8,7]);
+    ctx.beginPath();ctx.arc(cx,cy,magnetRadius,0,TAU);ctx.fill();ctx.stroke();ctx.restore();
   }
   ctx.save();ctx.translate(cx,cy);ctx.rotate(angle);
   ctx.fillStyle=skin.head;ctx.shadowColor=skin.color;ctx.shadowBlur=18;
@@ -542,7 +552,7 @@ function closeUpgrades(){
 $('upgradeOpenBtn').addEventListener('click',openUpgrades);
 $('upgradeCloseBtn').addEventListener('click',closeUpgrades);
 $('speedBtn').addEventListener('click',()=>{
-  if(speedLevel>=MAX_UPGRADE_LEVEL)return;
+  if(speedLevel>=MAX_SPEED_LEVEL)return;
   const cost=25+speedLevel*30;if(coins<cost)return;
   coins-=cost;speedLevel++;updateMoney();persist();toast('Rychlost vylepšena!');
 });
@@ -555,6 +565,12 @@ $('agilityBtn').addEventListener('click',()=>{
   if(agilityLevel>=MAX_UPGRADE_LEVEL)return;
   const cost=25+agilityLevel*30;if(coins<cost)return;
   coins-=cost;agilityLevel++;updateMoney();persist();toast('Obratnost vylepšena!');
+});
+$('rangeBtn').addEventListener('click',()=>{
+  if(rangeLevel>=MAX_RANGE_LEVEL)return;
+  const cost=1000*Math.pow(4,rangeLevel);if(coins<cost)return;
+  coins-=cost;rangeLevel++;updateMoney();persist();
+  toast(`Range zvýšen na ${rangeLevel*20} bloků!`);
 });
 function renderSkins(){
   $('skinCoins').textContent=coins;
